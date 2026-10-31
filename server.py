@@ -269,6 +269,10 @@ class API(BaseHTTPRequestHandler):
                 if user["role"] != "admin":
                     return response(self, 403, {"error": "admin_required"})
                 return response(self, 200, [dict(r) for r in con.execute("SELECT * FROM audit_events ORDER BY id DESC LIMIT 100").fetchall()])
+            if path == "/api/exports":
+                before = json.loads((ROOT / "exports" / "schedule.json").read_text())
+                after = json.loads((ROOT / "exports" / "schedule_after.json").read_text())
+                return response(self, 200, {"before": before, "after": after})
             if path == "/api/admin/users":
                 if user["role"] != "admin":
                     return response(self, 403, {"error": "admin_required"})
@@ -356,6 +360,32 @@ class API(BaseHTTPRequestHandler):
                 audit(con, user["id"], "booking_created", "booking", bid, {"status": status, "kind": body["kind"]})
                 con.commit()
                 return response(self, 201, {"id": bid, "status": status, "reason": reason})
+            if path == "/api/reschedule/propose":
+                if user["role"] != "admin":
+                    return response(self, 403, {"error": "admin_required"})
+                after = json.loads((ROOT / "exports" / "schedule_after.json").read_text())
+                revision = {"id": "REV-" + secrets.token_hex(3).upper(),
+                            "movedSessions": after["metadata"].get("movedSessions", 0),
+                            "hardConstraintViolations": after["metadata"].get("hardConstraintViolations", 0),
+                            "softPenalty": after["metadata"].get("softPenalty"),
+                            "status": "pending", "source": body.get("disruption", "submitted")}
+                con.execute("INSERT OR REPLACE INTO settings(key,value_json) VALUES('pending_revision',?)", (json.dumps(revision),))
+                audit(con, user["id"], "reschedule_proposed", "revision", revision["id"], revision)
+                con.commit()
+                return response(self, 201, {"revision": revision})
+            if path == "/api/reschedule/approve":
+                if user["role"] != "admin":
+                    return response(self, 403, {"error": "admin_required"})
+                revision_row = con.execute("SELECT value_json FROM settings WHERE key='pending_revision'").fetchone()
+                if not revision_row:
+                    return response(self, 404, {"error": "no_pending_revision"})
+                revision = json.loads(revision_row["value_json"])
+                revision["status"] = "approved"
+                con.execute("INSERT OR REPLACE INTO settings(key,value_json) VALUES('schedule_revision',?)", (json.dumps(revision),))
+                con.execute("DELETE FROM settings WHERE key='pending_revision'")
+                audit(con, user["id"], "reschedule_approved", "revision", revision["id"], revision)
+                con.commit()
+                return response(self, 200, {"revision": revision})
             if path.startswith("/api/bookings/") and path.endswith("/decision"):
                 if user["role"] != "admin":
                     return response(self, 403, {"error": "admin_approval_required"})

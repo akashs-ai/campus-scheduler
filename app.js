@@ -37,7 +37,7 @@ const bookingSeed = [
   { id: "BK-1046", title: "BCA alumni guest lecture", requester: "Alumni Cell", kind: "Guest lecture", room: "A-201", slot: "Wed · 10:00–12:00", status: "Pending admin", reason: "Would displace a regular class; Dean approval required." }
 ];
 
-let state = { role: null, page: "dashboard", toast: null, bookings: [...bookingSeed], loginRole: "admin", authMode: "login", error: "" };
+let state = { role: null, page: "dashboard", toast: null, bookings: [...bookingSeed], apiBookings: [], apiRooms: [], apiSessions: [], loginRole: "admin", authMode: "login", error: "", modal: null, loading: false };
 const API_BASE = window.ORBIT_API_BASE || "";
 const api = async (path, options = {}) => {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
@@ -56,6 +56,19 @@ const icon = (name) => ({
 function render() {
   document.querySelector("#app").innerHTML = state.role ? appShell() : signIn();
   bindEvents();
+}
+
+async function loadData() {
+  if (!state.role) return;
+  state.loading = true;
+  try {
+    const [apiBookings, apiRooms, apiSessions] = await Promise.all([api("/api/bookings"), api("/api/rooms"), api("/api/timetable")]);
+    state.apiBookings = apiBookings; state.apiRooms = apiRooms; state.apiSessions = apiSessions;
+  } catch (error) {
+    state.toast = error.message;
+  } finally {
+    state.loading = false; render();
+  }
 }
 
 function signIn() {
@@ -82,7 +95,7 @@ function appShell() {
     <div class="workspace-label">WORKSPACE</div><div class="current-role"><span class="avatar ${role.color}">${role.initials}</span><span><strong>${role.label}</strong><small>Spring term · 2025</small></span></div>
     <nav>${navItems().map(item => `<button class="${state.page === item.id ? "active" : ""}" data-page="${item.id}"><span>${icon(item.icon)}</span>${item.label}</button>`).join("")}</nav>
     <div class="sidebar-bottom"><button data-page="settings"><span>⚙</span>Settings</button><button class="sign-out" data-signout><span>↪</span>Sign out</button></div>
-  </aside><main class="main"><header class="topbar"><div><p class="eyebrow">Saturday, 12 April 2025</p><h1>${pageTitle()}</h1></div><div class="top-actions"><button class="icon-btn">⌕</button><button class="icon-btn">♧<i></i></button><span class="avatar ${role.color}">${role.initials}</span></div></header>${pageContent()}</main>${state.toast ? `<div class="toast">${icon("check")} ${state.toast}</div>` : ""}</div>`;
+  </aside><main class="main"><header class="topbar"><div><p class="eyebrow">Saturday, 12 April 2025</p><h1>${pageTitle()}</h1></div><div class="top-actions"><button class="icon-btn">⌕</button><button class="icon-btn">♧<i></i></button><span class="avatar ${role.color}">${role.initials}</span></div></header>${pageContent()}</main>${state.toast ? `<div class="toast">${icon("check")} ${state.toast}</div>` : ""}${state.modal === "booking" ? `<div class="modal-backdrop"><form class="modal-card" data-booking-form><button type="button" class="modal-close" data-close-modal>×</button><span class="eyebrow">NEW REQUEST</span><h2>Request a room</h2><p class="muted">The server will validate priority, timetable conflicts, maintenance, and ownership.</p><input name="title" required minlength="3" maxlength="160" placeholder="Request title" /><select name="kind" required><option value="club">Club event</option><option value="department">Department event</option><option value="guest">Guest lecture</option><option value="institute">Institute event</option><option value="exam">Exam</option></select><select name="room" required>${(state.apiRooms.length ? state.apiRooms : rooms).map(r => `<option>${r.name}</option>`).join("")}</select><div class="modal-grid"><select name="day" required>${days.map(d => `<option>${d}</option>`).join("")}</select><select name="start_period" required>${periods.map(p => `<option>${p}</option>`).join("")}</select></div><input name="duration" type="number" min="1" max="8" value="1" required /><button class="primary" type="submit">Submit request ${icon("arrow")}</button></form></div>` : ""}</div>`;
 }
 
 function navItems() {
@@ -105,15 +118,18 @@ function dashboard() {
 }
 
 function timetable() {
-  return `<div class="content"><div class="toolbar"><div class="filter-group"><button class="filter active">All departments⌄</button><button class="filter">All rooms⌄</button><button class="filter">This week⌄</button></div><button class="secondary">${icon("plus")} Add filter</button></div><section class="panel schedule-panel"><div class="schedule-head"><span class="eyebrow">WEEK 15 · 7–11 APRIL</span><div class="legend"><span><i class="legend-dot violet"></i> BCA</span><span><i class="legend-dot teal"></i> ECE</span><span><i class="legend-dot amber"></i> Shared</span></div></div><div class="schedule"><div class="time-col"><div></div>${periods.map(p => `<span>${p}</span>`).join("")}</div>${days.map(day => `<div class="day-col"><strong>${day}</strong>${periods.map(p => { const s = sessions.find(x => x.day === day && x.time === p); return `<div class="slot">${s ? `<article class="session-card ${s.group.startsWith("ECE") ? "teal-card" : "violet-card"}"><strong>${s.code}</strong><span>${s.title}</span><small>${s.room}</small></article>` : ""}</div>`; }).join("")}</div>`).join("")}</div></section></div>`;
+  const source = state.apiSessions.length ? state.apiSessions.map(s => ({ ...s, code: s.course_code, time: s.start_period, group: s.student_group })) : sessions;
+  return `<div class="content"><div class="toolbar"><div class="filter-group"><button class="filter active">All departments⌄</button><button class="filter">All rooms⌄</button><button class="filter">This week⌄</button></div><button class="secondary">${icon("plus")} Add filter</button></div><section class="panel schedule-panel"><div class="schedule-head"><span class="eyebrow">WEEK 15 · 7–11 APRIL</span><div class="legend"><span><i class="legend-dot violet"></i> BCA</span><span><i class="legend-dot teal"></i> ECE</span><span><i class="legend-dot amber"></i> Shared</span></div></div><div class="schedule"><div class="time-col"><div></div>${periods.map(p => `<span>${p}</span>`).join("")}</div>${days.map(day => `<div class="day-col"><strong>${day}</strong>${periods.map(p => { const s = source.find(x => x.day === day && x.time === p); return `<div class="slot">${s ? `<article class="session-card ${String(s.group).startsWith("ECE") ? "teal-card" : "violet-card"}"><strong>${s.code}</strong><span>${s.title}</span><small>${s.room}</small></article>` : ""}</div>`; }).join("")}</div>`).join("")}</div></section></div>`;
 }
 
 function roomFinder() {
-  return `<div class="content"><div class="search-row"><label class="search"><span>⌕</span><input placeholder="Search rooms, features, or capacity" /></label><button class="secondary">Filters <span class="count">2</span></button></div><div class="room-grid">${rooms.map(r => `<article class="room-card"><div class="room-top"><div><span class="eyebrow">${r.type}</span><h3>${r.name}</h3></div><span class="availability ${r.status.startsWith("Available") ? "available" : "maintenance"}">${r.status}</span></div><div class="room-meta"><span>♙ ${r.capacity} seats</span><span>◉ ${r.accessibility ? "Accessible" : "No lift access"}</span></div><div class="chips">${r.features.map(f => `<span>${f}</span>`).join("")}</div><button class="room-action" data-book="${r.name}">Request this room ${icon("arrow")}</button></article>`).join("")}</div></div>`;
+  const source = state.apiRooms.length ? state.apiRooms.map(r => ({ ...r, type: r.type, accessibility: r.accessible, status: r.maintenance.length ? "Maintenance window" : "Available" })) : rooms;
+  return `<div class="content"><div class="search-row"><label class="search"><span>⌕</span><input placeholder="Search rooms, features, or capacity" /></label><button class="secondary">Filters <span class="count">2</span></button></div><div class="room-grid">${source.map(r => `<article class="room-card"><div class="room-top"><div><span class="eyebrow">${r.type}</span><h3>${r.name}</h3></div><span class="availability ${r.status.startsWith("Available") ? "available" : "maintenance"}">${r.status}</span></div><div class="room-meta"><span>♙ ${r.capacity} seats</span><span>◉ ${r.accessibility ? "Accessible" : "No lift access"}</span></div><div class="chips">${r.features.map(f => `<span>${f}</span>`).join("")}</div><button class="room-action" data-book="${r.name}">Request this room ${icon("arrow")}</button></article>`).join("")}</div></div>`;
 }
 
 function bookings() {
-  return `<div class="content"><div class="toolbar"><div class="filter-group"><button class="filter active">All requests⌄</button><button class="filter">All statuses⌄</button></div><button class="primary" data-new-booking>${icon("plus")} New request</button></div><section class="panel"><div class="table-head"><span>REQUEST</span><span>TYPE</span><span>ROOM & SLOT</span><span>STATUS</span><span></span></div>${state.bookings.map(b => `<div class="table-row"><div class="request-cell"><span class="request-avatar">${b.requester.slice(0, 2).toUpperCase()}</span><span><strong>${b.title}</strong><small>${b.id} · ${b.requester}</small></span></div><span class="muted">${b.kind}</span><span><strong>${b.room}</strong><small>${b.slot}</small></span><span class="status-pill ${b.status === "Approved" ? "approved" : b.status === "Rejected" ? "rejected" : "pending"}">${b.status}</span><button class="icon-btn small" data-reason="${b.reason}">⋯</button></div>`).join("")}</section><div class="explain-card"><div class="decision-icon violet-bg">✦</div><div><strong>Every decision has a reason</strong><p>Orbit checks priority, ownership, capacity, availability, and class conflicts deterministically before an approval can be made.</p></div></div></div>`;
+  const source = state.apiBookings.length ? state.apiBookings.map(b => ({ ...b, requester: b.requester, kind: b.kind, slot: `${b.day} · ${b.start_period}`, status: b.status[0].toUpperCase() + b.status.slice(1), reason: b.decision_reason })) : state.bookings;
+  return `<div class="content"><div class="toolbar"><div class="filter-group"><button class="filter active">All requests⌄</button><button class="filter">All statuses⌄</button></div><button class="primary" data-new-booking>${icon("plus")} New request</button></div><section class="panel"><div class="table-head"><span>REQUEST</span><span>TYPE</span><span>ROOM & SLOT</span><span>STATUS</span><span></span></div>${source.map(b => `<div class="table-row"><div class="request-cell"><span class="request-avatar">${String(b.requester).slice(0, 2).toUpperCase()}</span><span><strong>${b.title}</strong><small>${b.id} · ${b.requester}</small></span></div><span class="muted">${b.kind}</span><span><strong>${b.room}</strong><small>${b.slot}</small></span><span class="status-pill ${b.status === "Approved" ? "approved" : b.status === "Rejected" ? "rejected" : "pending"}">${b.status}</span><button class="icon-btn small" data-reason="${b.reason}" data-cancel="${b.id}">⋯</button></div>`).join("")}</section><div class="explain-card"><div class="decision-icon violet-bg">✦</div><div><strong>Every decision has a reason</strong><p>Orbit checks priority, ownership, capacity, availability, and class conflicts deterministically before an approval can be made.</p></div></div></div>`;
 }
 
 function exams() {
@@ -140,16 +156,22 @@ function bindEvents() {
       const result = await api(state.authMode === "signup" ? "/api/auth/signup" : "/api/auth/login", { method: "POST", body: JSON.stringify(payload) });
       if (state.authMode === "signup") { state.authMode = "login"; state.error = "Account submitted. An administrator must approve it before you can sign in."; render(); return; }
       sessionStorage.setItem("orbit_token", result.token);
-      state.role = result.user.role; state.page = "dashboard"; state.error = ""; render();
+      state.role = result.user.role; state.page = "dashboard"; state.error = ""; render(); loadData();
     } catch (error) { state.error = error.message; render(); }
   });
   document.querySelectorAll("[data-page]").forEach(b => b.onclick = () => { state.page = b.dataset.page; render(); });
   document.querySelector("[data-signout]")?.addEventListener("click", async () => { try { await api("/api/auth/logout", { method: "POST", body: "{}" }); } catch {} sessionStorage.removeItem("orbit_token"); state.role = null; render(); });
-  document.querySelector("[data-new-booking]")?.addEventListener("click", () => { state.toast = "Request form opened — structured validation is ready."; render(); clearToast(); });
-  document.querySelectorAll("[data-book]").forEach(b => b.onclick = () => { state.toast = `${b.dataset.book} is available to request. Capacity and conflict checks will run on submit.`; render(); clearToast(); });
+  document.querySelector("[data-new-booking]")?.addEventListener("click", () => { state.modal = "booking"; render(); });
+  document.querySelectorAll("[data-book]").forEach(b => b.onclick = () => { state.modal = "booking"; render(); setTimeout(() => { const room = document.querySelector('[name="room"]'); if (room) room.value = b.dataset.book; }, 0); });
+  document.querySelector("[data-booking-form]")?.addEventListener("submit", async event => {
+    event.preventDefault();
+    try { const payload = Object.fromEntries(new FormData(event.currentTarget).entries()); payload.duration = Number(payload.duration || 1); await api("/api/bookings", { method: "POST", body: JSON.stringify(payload) }); state.modal = null; state.toast = "Booking request submitted with a server decision reason."; await loadData(); clearToast(); } catch (error) { state.toast = error.message; render(); clearToast(); }
+  });
+  document.querySelector("[data-close-modal]")?.addEventListener("click", () => { state.modal = null; render(); });
+  document.querySelectorAll("[data-cancel]").forEach(b => b.onclick = async () => { if (!confirm("Cancel this request?")) return; try { await api(`/api/bookings/${b.dataset.cancel}/cancel`, { method: "POST", body: "{}" }); await loadData(); } catch (error) { state.toast = error.message; render(); clearToast(); } });
   document.querySelectorAll("[data-reason]").forEach(b => b.onclick = () => { state.toast = b.dataset.reason; render(); clearToast(); });
-  document.querySelector("[data-disruption]")?.addEventListener("click", () => { state.toast = "sample_disruption.json applied. Valid revision found with 2 sessions moved."; render(); clearToast(); });
-  document.querySelector("[data-approve]")?.addEventListener("click", () => { if (state.role !== "admin") { state.toast = "Only an authenticated Admin can approve a revision."; } else { state.toast = "Revision approval must be submitted through the server workflow."; } render(); clearToast(); });
+  document.querySelector("[data-disruption]")?.addEventListener("click", async () => { try { const result = await api("/api/reschedule/propose", { method: "POST", body: JSON.stringify({ disruption: "sample_disruption.json" }) }); state.toast = `Valid revision ${result.revision.id} proposed with ${result.revision.movedSessions} sessions moved.`; } catch (error) { state.toast = error.message; } render(); clearToast(); });
+  document.querySelector("[data-approve]")?.addEventListener("click", async () => { try { await api("/api/reschedule/approve", { method: "POST", body: "{}" }); state.toast = "Revision approved and audit event recorded."; } catch (error) { state.toast = error.message; } render(); clearToast(); });
 }
 function clearToast() { setTimeout(() => { state.toast = null; render(); }, 3200); }
 async function bootstrap() {
@@ -161,6 +183,6 @@ async function bootstrap() {
     sessionStorage.removeItem("orbit_token");
     state.role = null;
   }
-  render();
+  render(); loadData();
 }
 bootstrap();
