@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "source": "sample_disruption.json applied through rescheduling flow",
+    "generatedBy": "campus-scheduler",
+    "validated": true,
+    "hardConstraintViolations": 0,
+    "softPenalty": 6.2,
+    "movedSessions": 2
+  },
+  "sessions": [
+    { "sessionId": "CS201-0", "courseCode": "CS201", "day": "Fri", "startPeriod": "09:00", "room": "A-201", "moved": true },
+    { "sessionId": "MA102-1", "courseCode": "MA102", "day": "Mon", "startPeriod": "10:00", "room": "A-105" },
+    { "sessionId": "EC210-2", "courseCode": "EC210", "day": "Mon", "startPeriod": "14:00", "room": "Lab E-1" },
+    { "sessionId": "CS305-3", "courseCode": "CS305", "day": "Tue", "startPeriod": "09:00", "room": "A-201" },
+    { "sessionId": "HU110-4", "courseCode": "HU110", "day": "Tue", "startPeriod": "11:00", "room": "B-104" },
+    { "sessionId": "EC302-5", "courseCode": "EC302", "day": "Tue", "startPeriod": "14:00", "room": "Lab E-2" },
+    { "sessionId": "CS220-6", "courseCode": "CS220", "day": "Thu", "startPeriod": "12:00", "room": "A-203", "moved": true },
+    { "sessionId": "MA205-7", "courseCode": "MA205", "day": "Wed", "startPeriod": "12:00", "room": "A-105" },
+    { "sessionId": "EC202-8", "courseCode": "EC202", "day": "Wed", "startPeriod": "15:00", "room": "A-203" },
+    { "sessionId": "CS401-9", "courseCode": "CS401", "day": "Thu", "startPeriod": "09:00", "room": "A-201" },
+    { "sessionId": "EC415-10", "courseCode": "EC415", "day": "Thu", "startPeriod": "11:00", "room": "Lab E-2" },
+    { "sessionId": "HU205-11", "courseCode": "HU205", "day": "Fri", "startPeriod": "10:00", "room": "B-104" }
+  ]
+}

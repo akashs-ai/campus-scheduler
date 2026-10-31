@@ -1,0 +1,13 @@
+{
+  "name": "campus-scheduler",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Campus timetable, room booking, exams, and rescheduling platform",
+  "scripts": {
+    "start": "npx serve .",
+    "validate": "node scripts/validate-exports.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
