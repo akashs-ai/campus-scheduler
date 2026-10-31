@@ -16,9 +16,9 @@ The heavy version also includes a standard-library API with SQLite persistence:
 python server.py
 ```
 
-The API listens on `http://localhost:8080`. Demo credentials are `admin@orbit.demo` / `admin-demo`, `coordinator@orbit.demo` / `coordinator-demo`, `faculty@orbit.demo` / `faculty-demo`, and `club@orbit.demo` / `club-demo`. These are demo-only credentials; production deployments must replace them and terminate TLS at the edge.
+The API listens on `http://localhost:8080` in development. Demo credentials are available only in development mode. Production mode refuses to auto-seed accounts, requires an explicit external bootstrap, and requires HTTPS at the proxy boundary.
 
-Core endpoints are `GET /api/health`, `POST /api/auth/login`, `GET /api/me`, `GET /api/rooms`, `GET /api/timetable`, `GET /api/bookings`, `POST /api/bookings`, `POST /api/bookings/:id/decision`, and `POST /api/admin/reset`. Authorization is checked on the server, sessions are bearer tokens with expiry, passwords are scrypt-hashed, SQLite foreign keys are enabled, and booking mutations write audit events.
+Core endpoints are `GET /api/health`, `POST /api/auth/login`, `POST /api/auth/signup`, `POST /api/auth/logout`, `GET /api/me`, `GET /api/rooms`, `GET /api/timetable`, `GET /api/bookings`, `POST /api/bookings`, `POST /api/bookings/:id/decision`, `POST /api/bookings/:id/cancel`, `GET /api/admin/users`, `POST /api/admin/users/:id/approve`, and `POST /api/admin/reset`. Authorization is checked on the server, sessions are persistent, hashed, expiring, and revocable, passwords are scrypt-hashed, SQLite foreign keys are enabled, login attempts are throttled, and booking mutations write audit events.
 
 Validate the included generated exports:
 
@@ -28,13 +28,13 @@ npm run validate
 
 ## Demo walkthrough
 
-Choose any role on the sign-in page. Admin exposes the Rescheduling studio and policy controls; every other role receives a focused workspace. The demo shows the official priority order (exams, classes, institute events, guest lectures, department events, clubs), explainable booking decisions, and the sample disruption comparison.
+Sign in through the authenticated form. The role selector is only a visual hint; the server derives the actual role from the account. Non-admin signup creates a pending account that cannot sign in until an Admin approves it. Admin exposes the Rescheduling studio and policy controls; every other role receives a focused workspace.
 
 Demo identities are role-scoped UI fixtures only. Production credentials must be supplied through environment variables or a managed secret store; never commit them. See `.env.example`.
 
 ## Architecture
 
-The current submission is a static vertical slice so judges can run it immediately: `index.html` provides the shell, `app.js` contains the role-aware view model and deterministic demo rules, `styles.css` provides the responsive design system, and `exports/` contains the app-produced export contract. A production deployment should move the same services behind a relational API with migrations, secure sessions, transactions, and server-side authorization.
+The submission combines a responsive frontend with a standard-library API, SQLite schema, persistent sessions, strict authorization, deterministic booking rules, audit events, and export validation. The frontend is served separately and uses a bearer token in `sessionStorage`; production should place both behind an HTTPS reverse proxy and configure a real verified identity/OTP provider.
 
 ## Known limitations
 

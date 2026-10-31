@@ -37,7 +37,17 @@ const bookingSeed = [
   { id: "BK-1046", title: "BCA alumni guest lecture", requester: "Alumni Cell", kind: "Guest lecture", room: "A-201", slot: "Wed · 10:00–12:00", status: "Pending admin", reason: "Would displace a regular class; Dean approval required." }
 ];
 
-let state = { role: null, page: "dashboard", toast: null, bookings: [...bookingSeed] };
+let state = { role: null, page: "dashboard", toast: null, bookings: [...bookingSeed], loginRole: "admin", authMode: "login", error: "" };
+const API_BASE = window.ORBIT_API_BASE || "";
+const api = async (path, options = {}) => {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  const token = sessionStorage.getItem("orbit_token");
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const result = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const data = await result.json().catch(() => ({}));
+  if (!result.ok) throw new Error(data.error || "Request failed");
+  return data;
+};
 
 const icon = (name) => ({
   grid: "▦", calendar: "▣", rooms: "⌂", ticket: "◇", exam: "◫", shuffle: "↝", settings: "⚙", plus: "+", arrow: "→", check: "✓", close: "×"
@@ -49,14 +59,19 @@ function render() {
 }
 
 function signIn() {
+  const role = roles[state.loginRole];
+  const signup = state.authMode === "signup";
   return `<main class="auth-page">
     <section class="auth-hero"><div class="brand"><span class="brand-mark">◒</span> orbit</div>
       <div class="hero-copy"><p class="eyebrow">Campus operations, made predictable.</p><h1>One calm place for every room, session, and change.</h1><p>Generate schedules, resolve room requests, and keep every decision explainable.</p></div>
       <div class="hero-stat"><strong>189</strong><span>weekly sessions<br>in the starter dataset</span></div>
     </section>
-    <section class="auth-panel"><div class="auth-header"><span class="eyebrow">Welcome back</span><h2>Sign in to Orbit</h2><p>Choose your workspace to continue.</p></div>
-      <div class="role-grid">${Object.entries(roles).map(([key, role]) => `<button class="role-card" data-role="${key}"><span class="avatar ${role.color}">${role.initials}</span><span><strong>${role.label}</strong><small>${key === "admin" ? "Schedule control & approvals" : key === "coordinator" ? "Department requests" : key === "faculty" ? "Your teaching day" : "Venue requests"}</small></span><b>→</b></button>`).join("")}</div>
-      <p class="auth-note">Demo mode is enabled. Production authentication is configured through environment-backed credentials and verified identity providers.</p>
+    <section class="auth-panel"><div class="auth-header"><span class="eyebrow">${signup ? "REQUEST ACCESS" : "SECURE SIGN IN"}</span><h2>${signup ? "Create a pending account" : "Sign in to Orbit"}</h2><p>${signup ? "Privileged access remains pending until an administrator approves it." : "Your role comes from the authenticated account, not this selection."}</p></div>
+      ${!signup ? `<div class="role-grid compact-roles">${Object.entries(roles).map(([key, item]) => `<button class="role-card ${state.loginRole === key ? "selected" : ""}" data-login-role="${key}"><span class="avatar ${item.color}">${item.initials}</span><span><strong>${item.label}</strong><small>${key === "admin" ? "Schedule control & approvals" : key === "coordinator" ? "Department requests" : key === "faculty" ? "Your teaching day" : "Venue requests"}</small></span><b>${state.loginRole === key ? "✓" : "→"}</b></button>`).join("")}</div>` : ""}
+      <form class="auth-form" data-auth-form><input name="display_name" placeholder="Full name" ${signup ? "required" : "hidden"} /><input name="email" type="email" placeholder="College email" required /><input name="password" type="password" minlength="${signup ? "12" : "1"}" placeholder="${signup ? "Password (12+ characters)" : "Password"}" required />${signup ? `<select name="role"><option value="coordinator">Department Coordinator</option><option value="faculty">Faculty</option><option value="club">Club Representative</option></select><input name="department" placeholder="Department (optional)" />` : ""}<button class="primary" type="submit">${signup ? "Submit for approval" : `Sign in as ${role.label}`} →</button></form>
+      ${state.error ? `<p class="auth-error">${state.error}</p>` : ""}
+      <button class="text-btn auth-toggle" data-toggle-auth>${signup ? "Back to sign in" : "Need access? Request a verified account"}</button>
+      <p class="auth-note">${signup ? "Admin accounts cannot be self-created. Email OTP and password providers must be configured for production." : "Demo accounts are available only in development mode. Production deployments must configure external bootstrap credentials and HTTPS."}</p>
     </section>
   </main>`;
 }
@@ -115,14 +130,37 @@ function settings() {
 }
 
 function bindEvents() {
-  document.querySelectorAll("[data-role]").forEach(b => b.onclick = () => { state.role = b.dataset.role; state.page = "dashboard"; render(); });
+  document.querySelectorAll("[data-login-role]").forEach(b => b.onclick = () => { state.loginRole = b.dataset.loginRole; state.error = ""; render(); });
+  document.querySelector("[data-toggle-auth]")?.addEventListener("click", () => { state.authMode = state.authMode === "login" ? "signup" : "login"; state.error = ""; render(); });
+  document.querySelector("[data-auth-form]")?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const payload = Object.fromEntries(form.entries());
+    try {
+      const result = await api(state.authMode === "signup" ? "/api/auth/signup" : "/api/auth/login", { method: "POST", body: JSON.stringify(payload) });
+      if (state.authMode === "signup") { state.authMode = "login"; state.error = "Account submitted. An administrator must approve it before you can sign in."; render(); return; }
+      sessionStorage.setItem("orbit_token", result.token);
+      state.role = result.user.role; state.page = "dashboard"; state.error = ""; render();
+    } catch (error) { state.error = error.message; render(); }
+  });
   document.querySelectorAll("[data-page]").forEach(b => b.onclick = () => { state.page = b.dataset.page; render(); });
-  document.querySelector("[data-signout]")?.addEventListener("click", () => { state.role = null; render(); });
+  document.querySelector("[data-signout]")?.addEventListener("click", async () => { try { await api("/api/auth/logout", { method: "POST", body: "{}" }); } catch {} sessionStorage.removeItem("orbit_token"); state.role = null; render(); });
   document.querySelector("[data-new-booking]")?.addEventListener("click", () => { state.toast = "Request form opened — structured validation is ready."; render(); clearToast(); });
   document.querySelectorAll("[data-book]").forEach(b => b.onclick = () => { state.toast = `${b.dataset.book} is available to request. Capacity and conflict checks will run on submit.`; render(); clearToast(); });
   document.querySelectorAll("[data-reason]").forEach(b => b.onclick = () => { state.toast = b.dataset.reason; render(); clearToast(); });
   document.querySelector("[data-disruption]")?.addEventListener("click", () => { state.toast = "sample_disruption.json applied. Valid revision found with 2 sessions moved."; render(); clearToast(); });
-  document.querySelector("[data-approve]")?.addEventListener("click", () => { state.toast = "Revision approved and audit event recorded."; render(); clearToast(); });
+  document.querySelector("[data-approve]")?.addEventListener("click", () => { if (state.role !== "admin") { state.toast = "Only an authenticated Admin can approve a revision."; } else { state.toast = "Revision approval must be submitted through the server workflow."; } render(); clearToast(); });
 }
 function clearToast() { setTimeout(() => { state.toast = null; render(); }, 3200); }
-render();
+async function bootstrap() {
+  if (!sessionStorage.getItem("orbit_token")) return render();
+  try {
+    const user = await api("/api/me");
+    state.role = user.role;
+  } catch {
+    sessionStorage.removeItem("orbit_token");
+    state.role = null;
+  }
+  render();
+}
+bootstrap();

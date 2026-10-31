@@ -12,7 +12,12 @@ class ApiTests(unittest.TestCase):
     def login(self, email, password):
         con = server.db(); u = con.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone(); con.close()
         self.assertTrue(server.password_ok(password, u["password_hash"]))
-        token = "test-" + email; server.SESSIONS[token] = (u["id"], 9999999999); return token, u
+        token = "test-" + email
+        con = server.db()
+        con.execute("INSERT OR REPLACE INTO auth_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
+                    (server.token_hash(token), u["id"], 9999999999))
+        con.commit(); con.close()
+        return token, u
     def test_seed_has_roles_rooms_and_sessions(self):
         con = server.db()
         self.assertEqual(con.execute("SELECT COUNT(*) FROM users").fetchone()[0], 4)
@@ -26,7 +31,7 @@ class ApiTests(unittest.TestCase):
     def test_self_approval_is_rejected_by_policy(self):
         _, user = self.login("admin@orbit.demo", "admin-demo")
         con = server.db()
-        con.execute("INSERT OR REPLACE INTO bookings VALUES(?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
+        con.execute("INSERT OR REPLACE INTO bookings(id,title,requester_id,kind,room,day,start_period,duration,status,decision_reason,decided_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                      ("SELF-1","Self request",user["id"],"club","A-201","Fri","16:00",1,"pending","",None))
         con.commit()
         booking = con.execute("SELECT * FROM bookings WHERE id='SELF-1'").fetchone()

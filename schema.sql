@@ -7,7 +7,10 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK (role IN ('admin','coordinator','faculty','club')),
   department TEXT,
   password_hash TEXT NOT NULL,
-  active INTEGER NOT NULL DEFAULT 1
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','suspended')),
+  active INTEGER NOT NULL DEFAULT 1,
+  approved_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS rooms (
   id INTEGER PRIMARY KEY,
@@ -55,5 +58,20 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  expires_at INTEGER NOT NULL,
+  revoked_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  identity TEXT NOT NULL,
+  ip TEXT NOT NULL,
+  succeeded INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS bookings_slot_idx ON bookings(room, day, start_period, status);
 CREATE INDEX IF NOT EXISTS audit_created_idx ON audit_events(created_at);
+CREATE INDEX IF NOT EXISTS auth_sessions_user_idx ON auth_sessions(user_id, expires_at);
+CREATE INDEX IF NOT EXISTS auth_attempts_idx ON auth_attempts(identity, ip, created_at);
