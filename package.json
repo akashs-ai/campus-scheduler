@@ -5,7 +5,9 @@
   "description": "Campus timetable, room booking, exams, and rescheduling platform",
   "scripts": {
     "start": "npx serve .",
-    "validate": "node scripts/validate-exports.js"
+    "validate": "python scripts/validate_exports.py",
+    "server": "python server.py",
+    "test": "python -m unittest discover -s tests -v"
   },
   "engines": {
     "node": ">=18"
